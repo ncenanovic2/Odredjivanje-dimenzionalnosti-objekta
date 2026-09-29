@@ -1,0 +1,62 @@
+import math
+import cv2
+import numpy as np
+
+def getContours(img, cThr=[100, 100], showCanny=False, minArea=1000, filter=0, draw=False):
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (5, 5), 1)
+    canny = cv2.Canny(blur, cThr[0], cThr[1])
+    kernel = np.ones((5, 5))
+    dilated = cv2.dilate(canny, kernel, iterations=3)
+    eroded = cv2.erode(dilated, kernel, iterations=2)
+
+    if showCanny:
+        canny_image = cv2.Canny(img, 50, 50)
+        canny_small = cv2.resize(canny_image, (0, 0), fx=0.6, fy=0.6)
+        cv2.imshow("Canny(resized)", canny_small)
+
+    contours, _ = cv2.findContours(eroded, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    finalContours = []
+
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area > minArea:
+            peri = cv2.arcLength(c, True)
+            approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+            bbox = cv2.boundingRect(approx)
+            if filter > 0:
+                if len(approx) == filter:
+                    finalContours.append([len(approx), area, approx, bbox, c])
+            else:
+                finalContours.append([len(approx), area, approx, bbox, c])
+
+    finalContours = sorted(finalContours, key=lambda x: x[1], reverse=True)
+
+    if draw:
+        for con in finalContours:
+            cv2.drawContours(img, con[4], -1, (0, 255, 0), 3)
+
+    return img, finalContours
+
+def reorder(points):
+    points = points.reshape((4, 2))
+    newPoints = np.zeros((4, 1, 2), dtype=np.int32)
+    add = points.sum(1)
+    diff = np.diff(points, axis=1)
+
+    newPoints[0] = points[np.argmin(add)]     # top-left
+    newPoints[3] = points[np.argmax(add)]     # bottom-right
+    newPoints[1] = points[np.argmin(diff)]    # top-right
+    newPoints[2] = points[np.argmax(diff)]    # bottom-left
+    return newPoints
+
+def warpImage(img, points, w, h):
+    points = reorder(points)
+    pts1 = np.float32(points)
+    pts2 = np.float32([[0, 0], [w, 0], [0, h], [w, h]])
+    matrix = cv2.getPerspectiveTransform(pts1, pts2)
+    imgWarp = cv2.warpPerspective(img, matrix, (w, h))
+    return imgWarp
+
+def findDistance(p1, p2):
+    return math.hypot(p2[0] - p1[0], p2[1] - p1[1])

@@ -1,0 +1,58 @@
+import cv2
+import numpy as np
+import Functions
+
+image_path = "C:\\Users\\nejla\\OneDrive\\Desktop\\Slika.jpg"
+
+# === A4 dimenzije u pikselima (A4 = 210mm x 297mm) ===
+SCALE = 3
+wPaper = 210 * SCALE
+hPaper = 297 * SCALE
+pixels_per_cm = wPaper / 21.0  # 630 / 21 cm
+
+while True:
+    img = cv2.imread(image_path)
+    if img is None:
+        print(f"[ERROR] Slika nije pronađena: {image_path}")
+        break
+
+    # === Prikaz originalne slike za pregled ===
+    imgPreview = cv2.resize(img, (0, 0), fx=0.4, fy=0.4)
+    cv2.imshow("Ulazna slika", imgPreview)
+
+    # === Detekcija kontura papira (npr. A4) ===
+    imgContours, contours = Functions.getContours(img, minArea=2000, filter=4, draw=False, showCanny=True)
+
+    if contours:
+        biggest = contours[0][2]
+        imgWarp = Functions.warpImage(img, biggest, wPaper, hPaper)
+
+        # === Detekcija objekata unutar izrezanog A4 papira ===
+        imgObjects, objectContours = Functions.getContours(imgWarp, minArea=1000, filter=4, cThr=[30, 30], draw=False)
+
+        if objectContours:
+            for obj in objectContours:
+                pts = Functions.reorder(obj[2])
+                cv2.polylines(imgObjects, [obj[2]], True, (0, 255, 0), 2)
+
+                # Dimenzije objekta u pikselima koristeći findDistance
+                width_px = Functions.findDistance(pts[0][0], pts[1][0])
+                height_px = Functions.findDistance(pts[0][0], pts[2][0])
+
+                # Pretvaranje u centimetre
+                width_cm = round(width_px / pixels_per_cm, 1)
+                height_cm = round(height_px / pixels_per_cm, 1)
+
+                # Prikaz dimenzija
+                cv2.putText(imgObjects, f'{width_cm}cm x {height_cm}cm',
+                            (pts[0][0][0], pts[0][0][1] - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+        cv2.imshow("A4 papir: ", imgObjects)
+
+    # Prekid petlje ako korisnik pritisne ESC
+    key = cv2.waitKey(1)
+    if key == 27:  # ESC
+        break
+
+cv2.destroyAllWindows()
